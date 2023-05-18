@@ -15,6 +15,7 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
     """
     The Graph Dataset representing the TMDB data.
     """
+
     def __init__(self, root: str = './tmp', node_feature_method: Literal['counter', 'tf-idf'] = 'counter',
                  node_feature_params: Dict = None,
                  node_feature_column_source: Literal['overview', 'keywords'] = 'overview',
@@ -71,8 +72,8 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
         torch.save((data, slices), self.processed_paths[0])
 
     def _load_data_and_preprocess(self):
-        df_movies = pd.read_csv(os.path.join(self.raw_dir, 'tmdb_5000_movies.csv')).iloc[0:30]
-        df_credits = pd.read_csv(os.path.join(self.raw_dir, 'tmdb_5000_credits.csv')).iloc[0:30]
+        df_movies = pd.read_csv(os.path.join(self.raw_dir, 'tmdb_5000_movies.csv'))  #.iloc[0:30]
+        df_credits = pd.read_csv(os.path.join(self.raw_dir, 'tmdb_5000_credits.csv'))  #.iloc[0:30]
         df = df_movies.set_index('id').join(
             df_credits.set_index('movie_id'),
             lsuffix='_movies', rsuffix='_credits').reset_index()
