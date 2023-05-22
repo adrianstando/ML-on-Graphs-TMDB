@@ -1,8 +1,7 @@
-from typing import Literal, Dict, Optional
+from typing import Literal, Dict
 
 import torch
 import torch_geometric
-import kaggle
 import pandas as pd
 import numpy as np
 import os
@@ -24,6 +23,7 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
         node_feature_column_source: Literal["overview", "keywords"] = "overview",
         edge_weight_column_source: Literal["cast", "crew", "keywords"] = "cast",
         jaccard_distance_threshold: float = 0,
+        graph_type: Literal["homogenous", "heterogeneous"] = "homogenous"
     ):
         """
         The Graph Dataset representing the TMDB data.
@@ -33,7 +33,12 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
         :param node_feature_params: Dictionary with parameters for node feature extraction method.
         :param node_feature_column_source: The column from which the node features should be extracted.
         :param edge_weight_column_source: The column from which the weight features should be extracted.
-        :param jaccard_distance_threshold: The Jaccard distance threshold above which the edges are added to the dataset
+        Used only if graph_type='homogenous'.
+        :param jaccard_distance_threshold: The Jaccard distance threshold above which the edges are added to
+        the dataset. Used only if graph_type='homogenous'.
+        :param graph_type: Graph type. If "homogenous", the nodes are connected based on the jaccard distance between
+        crew or cast members. If "heterogeneous", there three node types in the data: the movie nodes features are
+        extracted as in "homogenous" case; the movies are connected to the nodes describing crew and cast.
         """
         self.node_feature_method = node_feature_method
         self.node_feature_column_source = node_feature_column_source
@@ -43,6 +48,7 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
             self.node_feature_params = node_feature_params
         self.edge_weight_column_source = edge_weight_column_source
         self.jaccard_distance_threshold = jaccard_distance_threshold
+        self.graph_type = graph_type
 
         super().__init__(root)
         self.data, self.slices = torch.load(self.processed_paths[0])
@@ -53,34 +59,101 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        return f"data_{self.node_feature_method}_{self.node_feature_column_source}_{self.edge_weight_column_source}.pt"
+        return f"data_{self.graph_type}_{self.node_feature_method}_{self.node_feature_column_source}_" \
+               f"{self.edge_weight_column_source}.pt"
 
     def process(self):
-        nodes, edges, edge_attributes, y = self._load_data_and_preprocess()
-        data_graph = torch_geometric.data.Data(x=nodes, edge_index=edges, edge_attr=edge_attributes, y=y)
+        if self.graph_type == 'homogenous':
+            nodes, edges, edge_attributes, y = self._load_data_and_preprocess()
+            data_graph = torch_geometric.data.Data(x=nodes, edge_index=edges, edge_attr=edge_attributes, y=y)
+        elif self.graph_type == 'heterogeneous':
+            data = self._load_and_preprocess_heterogeneous()
+            data_graph = torch_geometric.data.HeteroData()
+
+            data_graph['movies'].x = data['nodes']['movies']['x']
+            data_graph['crew'].x = data['nodes']['crew']['x']
+            data_graph['cast'].x = data['nodes']['cast']['x']
+
+            data_graph['movies'].y = data['nodes']['movies']['y']
+
+            data_graph['crew', 'in', 'movies'].edge_index = data['edges']['movie_crew'][torch.tensor([1, 0]), :]
+            data_graph['cast', 'in', 'movies'].edge_index = data['edges']['movie_cast'][torch.tensor([1, 0]), :]
+        else:
+            raise Exception
+
         # make the graph undirected
         data_graph = torch_geometric.transforms.to_undirected.ToUndirected()(data_graph)
-
         data, slices = self.collate([data_graph])
         torch.save((data, slices), self.processed_paths[0])
 
-    def _load_data_and_preprocess(self):
-        df_movies = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_movies_processed.csv"))  # .iloc[0:30]
-        df_credits = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_credits_processed.csv"))  # .iloc[0:30]
+    def _load_dataframe(self):
+        df_movies = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_movies_processed.csv")).iloc[0:30]
+        df_credits = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_credits_processed.csv")).iloc[0:30]
         df = (
             df_movies.set_index("id")
             .join(df_credits.set_index("movie_id"), lsuffix="_movies", rsuffix="_credits")
             .reset_index()
         )
+        df = df.dropna()
+        return df
 
+    def _load_and_preprocess_heterogeneous(self):
+        df = self._load_dataframe()
+        movie_y = torch.from_numpy(df["revenue"].to_numpy())
+        movie_nodes = self._extract_nodes(df)
+
+        df = df.reset_index()
+        crew_mapping, movies_crew_edges = self._extract_people_nodes(df, 'crew')
+        cast_mapping, movies_cast_edges = self._extract_people_nodes(df, 'cast')
+
+        movies_crew_edges = torch.from_numpy(np.array(movies_crew_edges)).type(torch.long).t().contiguous()
+        movies_cast_edges = torch.from_numpy(np.array(movies_cast_edges)).type(torch.long).t().contiguous()
+
+        return {
+            'nodes': {
+                'movies': {
+                    'x': movie_nodes,
+                    'y': movie_y
+                },
+                'crew': {
+                    'x': torch.eye(len(crew_mapping))
+                },
+                'cast': {
+                    'x': torch.eye(len(cast_mapping))
+                }
+            },
+            'edges': {
+                'movie_crew': movies_crew_edges,
+                'movie_cast': movies_cast_edges
+            }
+        }
+
+    def _extract_people_nodes(self, df, column):
+        mapping = {}
+        counter = 0
+        edges = []
+
+        for index, row in df.iterrows():
+            movie_node_index = row['index']
+            people = self._extract_id(row[column]).split(' ')
+
+            for person in people:
+                if person not in mapping.keys():
+                    mapping[person] = counter
+                    counter += 1
+                edges.append([movie_node_index, mapping[person]])
+        return mapping, edges
+
+    def _load_data_and_preprocess(self):
+        df = self._load_dataframe()
         # remove unnecessary columns
         df = df[["revenue", self.node_feature_column_source, self.edge_weight_column_source]]
         df = df.dropna()
 
         y = torch.from_numpy(df["revenue"].to_numpy())
         nodes = self._extract_nodes(df)
-        edges, edge_attributes = self._extract_edge_weights(df)
 
+        edges, edge_attributes = self._extract_edge_weights(df)
         return nodes, edges, edge_attributes, y
 
     def _extract_nodes(self, df):
