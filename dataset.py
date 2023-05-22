@@ -87,8 +87,8 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
         torch.save((data, slices), self.processed_paths[0])
 
     def _load_dataframe(self):
-        df_movies = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_movies_processed.csv")).iloc[0:30]
-        df_credits = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_credits_processed.csv")).iloc[0:30]
+        df_movies = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_movies_processed.csv")) #.iloc[0:30]
+        df_credits = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_credits_processed.csv")) #.iloc[0:30]
         df = (
             df_movies.set_index("id")
             .join(df_credits.set_index("movie_id"), lsuffix="_movies", rsuffix="_credits")
