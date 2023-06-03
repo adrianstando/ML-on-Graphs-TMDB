@@ -65,7 +65,20 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
     def process(self):
         if self.graph_type == 'homogenous':
             nodes, edges, edge_attributes, y = self._load_data_and_preprocess()
-            data_graph = torch_geometric.data.Data(x=nodes, edge_index=edges, edge_attr=edge_attributes, y=y)
+
+            #########################################################################
+            # fixing the bug
+            n_nodes = nodes.shape[0]
+            edges = edges.numpy()
+            indices = np.nonzero(np.max(edges, axis=0) <= n_nodes)[0]
+            edges = edges[:, indices]
+            edge_attributes = edge_attributes.numpy()[indices, :]
+            edges = torch.from_numpy(edges)
+            edge_attributes = torch.from_numpy(edge_attributes)
+            #########################################################################
+
+            data_graph = torch_geometric.data.Data(
+                x=nodes.float(), edge_index=edges.long(), edge_attr=edge_attributes, y=y.reshape(-1, 1).float())
         elif self.graph_type == 'heterogeneous':
             data = self._load_and_preprocess_heterogeneous()
             data_graph = torch_geometric.data.HeteroData()
@@ -83,6 +96,15 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
 
         # make the graph undirected
         data_graph = torch_geometric.transforms.to_undirected.ToUndirected()(data_graph)
+
+        try:
+            print("Data was preprocessed!")
+            print("Validating the graph...")
+            if data_graph.validate():
+                print("The graph is correct!")
+        except Exception as error:
+            print("The graph is not correct: ", error)
+
         data, slices = self.collate([data_graph])
         torch.save((data, slices), self.processed_paths[0])
 
