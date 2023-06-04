@@ -179,7 +179,6 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
 
     def _load_data_and_preprocess(self):
         df = self._load_dataframe()
-        # remove unnecessary columns
         df = df.dropna()
 
         y = torch.from_numpy(df["revenue"].to_numpy())
@@ -192,15 +191,19 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
         transformer = self._get_node_transformer()
         node_data = self._get_data_for_node_transformer(df)
         nodes_features = transformer.fit_transform(node_data).todense()
+        print(f"Added {nodes_features.shape[1]} node features")
         if self.add_additional_node_features:
             nodes_features = self._add_additional_node_features(df, nodes_features)
         nodes_features = torch.from_numpy(nodes_features)
         return nodes_features
 
     def _add_additional_node_features(self, df, nodes_features):
-        additional_features = df.drop(["revenue", "keywords", "overview", "title", "cast", "crew", "id"], axis=1).values
-        additional_features = StandardScaler().fit_transform(additional_features)
-        nodes_features = np.hstack([additional_features, nodes_features])
+        additional_features = df.drop(["revenue", "keywords", "overview", "title", "cast", "crew", "id"], axis=1)
+        additional_features[["budget", "runtime", "release_year", "release_month"]] = StandardScaler().fit_transform(
+            additional_features[["budget", "runtime", "release_year", "release_month"]]
+        )
+        print(f"Added {additional_features.shape[1]} additional node features")
+        nodes_features = np.hstack([additional_features.values, nodes_features])
         return nodes_features
 
     def _get_node_transformer(self):
