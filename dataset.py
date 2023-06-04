@@ -23,7 +23,7 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
         node_feature_column_source: Literal["overview", "keywords"] = "overview",
         edge_weight_column_source: Literal["cast", "crew", "keywords"] = "cast",
         jaccard_distance_threshold: float = 0,
-        graph_type: Literal["homogenous", "heterogeneous"] = "homogenous"
+        graph_type: Literal["homogenous", "heterogeneous"] = "homogenous",
     ):
         """
         The Graph Dataset representing the TMDB data.
@@ -59,11 +59,13 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        return f"data_{self.graph_type}_{self.node_feature_method}_{self.node_feature_column_source}_" \
-               f"{self.edge_weight_column_source}.pt"
+        return (
+            f"data_{self.graph_type}_{self.node_feature_method}_{self.node_feature_column_source}_"
+            f"{self.edge_weight_column_source}.pt"
+        )
 
     def process(self):
-        if self.graph_type == 'homogenous':
+        if self.graph_type == "homogenous":
             nodes, edges, edge_attributes, y = self._load_data_and_preprocess()
 
             #########################################################################
@@ -78,19 +80,20 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
             #########################################################################
 
             data_graph = torch_geometric.data.Data(
-                x=nodes.float(), edge_index=edges.long(), edge_attr=edge_attributes, y=y.reshape(-1, 1).float())
-        elif self.graph_type == 'heterogeneous':
+                x=nodes.float(), edge_index=edges.long(), edge_attr=edge_attributes, y=y.reshape(-1, 1).float()
+            )
+        elif self.graph_type == "heterogeneous":
             data = self._load_and_preprocess_heterogeneous()
             data_graph = torch_geometric.data.HeteroData()
 
-            data_graph['movies'].x = data['nodes']['movies']['x']
-            data_graph['crew'].x = data['nodes']['crew']['x']
-            data_graph['cast'].x = data['nodes']['cast']['x']
+            data_graph["movies"].x = data["nodes"]["movies"]["x"]
+            data_graph["crew"].x = data["nodes"]["crew"]["x"]
+            data_graph["cast"].x = data["nodes"]["cast"]["x"]
 
-            data_graph['movies'].y = data['nodes']['movies']['y']
+            data_graph["movies"].y = data["nodes"]["movies"]["y"]
 
-            data_graph['crew', 'in', 'movies'].edge_index = data['edges']['movie_crew'][torch.tensor([1, 0]), :]
-            data_graph['cast', 'in', 'movies'].edge_index = data['edges']['movie_cast'][torch.tensor([1, 0]), :]
+            data_graph["crew", "in", "movies"].edge_index = data["edges"]["movie_crew"][torch.tensor([1, 0]), :]
+            data_graph["cast", "in", "movies"].edge_index = data["edges"]["movie_cast"][torch.tensor([1, 0]), :]
         else:
             raise Exception
 
@@ -109,8 +112,8 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
         torch.save((data, slices), self.processed_paths[0])
 
     def _load_dataframe(self):
-        df_movies = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_movies_processed.csv")) #.iloc[0:30]
-        df_credits = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_credits_processed.csv")) #.iloc[0:30]
+        df_movies = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_movies_processed.csv"))  # .iloc[0:30]
+        df_credits = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_credits_processed.csv"))  # .iloc[0:30]
         df = (
             df_movies.set_index("id")
             .join(df_credits.set_index("movie_id"), lsuffix="_movies", rsuffix="_credits")
@@ -125,29 +128,19 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
         movie_nodes = self._extract_nodes(df)
 
         df = df.reset_index()
-        crew_mapping, movies_crew_edges = self._extract_people_nodes(df, 'crew')
-        cast_mapping, movies_cast_edges = self._extract_people_nodes(df, 'cast')
+        crew_mapping, movies_crew_edges = self._extract_people_nodes(df, "crew")
+        cast_mapping, movies_cast_edges = self._extract_people_nodes(df, "cast")
 
         movies_crew_edges = torch.from_numpy(np.array(movies_crew_edges)).type(torch.long).t().contiguous()
         movies_cast_edges = torch.from_numpy(np.array(movies_cast_edges)).type(torch.long).t().contiguous()
 
         return {
-            'nodes': {
-                'movies': {
-                    'x': movie_nodes,
-                    'y': movie_y
-                },
-                'crew': {
-                    'x': torch.eye(len(crew_mapping))
-                },
-                'cast': {
-                    'x': torch.eye(len(cast_mapping))
-                }
+            "nodes": {
+                "movies": {"x": movie_nodes, "y": movie_y},
+                "crew": {"x": torch.eye(len(crew_mapping))},
+                "cast": {"x": torch.eye(len(cast_mapping))},
             },
-            'edges': {
-                'movie_crew': movies_crew_edges,
-                'movie_cast': movies_cast_edges
-            }
+            "edges": {"movie_crew": movies_crew_edges, "movie_cast": movies_cast_edges},
         }
 
     def _extract_people_nodes(self, df, column):
@@ -156,8 +149,8 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
         edges = []
 
         for index, row in df.iterrows():
-            movie_node_index = row['index']
-            people = self._extract_id(row[column]).split(' ')
+            movie_node_index = row["index"]
+            people = self._extract_id(row[column]).split(" ")
 
             for person in people:
                 if person not in mapping.keys():
