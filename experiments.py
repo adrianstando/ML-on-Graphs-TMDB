@@ -33,12 +33,13 @@ models = {
 }
 
 
-def main(task_id):
-    # global task_id
+def main():
+    global task_id
     global hidden_sizes
     global dropouts
     global lrs
     global graph_features
+
     task_id = int(task_id)
     task_id = task_id - 1
     print(f"Task id: {task_id}")
@@ -122,4 +123,4 @@ def train_model(model_name, model_class, hidden_size, dropout, lr, df, graph, gr
 
 
 if __name__ == "__main__":
-    main(task_id)
+    main()
