@@ -8,6 +8,7 @@ import os
 import json
 
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.preprocessing import StandardScaler
 
 
 class TMDBDataset(torch_geometric.data.InMemoryDataset):
@@ -21,6 +22,7 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
         node_feature_method: Literal["counter", "tf-idf"] = "counter",
         node_feature_params: Dict = None,
         node_feature_column_source: Literal["overview", "keywords"] = "overview",
+        add_additional_node_features: bool = True,
         edge_weight_column_source: Literal["cast", "crew", "keywords"] = "cast",
         jaccard_distance_threshold: float = 0,
         graph_type: Literal["homogenous", "heterogeneous"] = "homogenous",
@@ -32,6 +34,7 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
         :param node_feature_method: Method to extract node features.
         :param node_feature_params: Dictionary with parameters for node feature extraction method.
         :param node_feature_column_source: The column from which the node features should be extracted.
+        :param add_additional_node_features: If True, the additional (descriptive, not related to keywords/overview) node features are added to the dataset
         :param edge_weight_column_source: The column from which the weight features should be extracted.
         Used only if graph_type='homogenous'.
         :param jaccard_distance_threshold: The Jaccard distance threshold above which the edges are added to
@@ -46,6 +49,7 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
             self.node_feature_params = {}
         else:
             self.node_feature_params = node_feature_params
+        self.add_additional_node_features = add_additional_node_features
         self.edge_weight_column_source = edge_weight_column_source
         self.jaccard_distance_threshold = jaccard_distance_threshold
         self.graph_type = graph_type
@@ -61,6 +65,7 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
     def processed_file_names(self):
         return (
             f"data_{self.graph_type}_{self.node_feature_method}_{self.node_feature_column_source}_"
+            f"{'additional' if self.add_additional_node_features else 'noadditional'}_"
             f"{self.edge_weight_column_source}.pt"
         )
 
@@ -112,8 +117,21 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
         torch.save((data, slices), self.processed_paths[0])
 
     def _load_dataframe(self):
-        df_movies = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_movies_processed.csv"))  # .iloc[0:30]
+        df_movies = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_movies_processed.csv")).drop(
+            [
+                "genres",
+                "popularity",
+                "spoken_languages",
+                "production_companies",
+                "production_countries",
+                "vote_average",
+                "vote_count",
+                "title",
+            ],
+            axis=1,
+        )  # .iloc[0:30]
         df_credits = pd.read_csv(os.path.join(self.raw_dir, "tmdb_5000_credits_processed.csv"))  # .iloc[0:30]
+
         df = (
             df_movies.set_index("id")
             .join(df_credits.set_index("movie_id"), lsuffix="_movies", rsuffix="_credits")
@@ -162,7 +180,6 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
     def _load_data_and_preprocess(self):
         df = self._load_dataframe()
         # remove unnecessary columns
-        df = df[["revenue", self.node_feature_column_source, self.edge_weight_column_source]]
         df = df.dropna()
 
         y = torch.from_numpy(df["revenue"].to_numpy())
@@ -174,8 +191,16 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
     def _extract_nodes(self, df):
         transformer = self._get_node_transformer()
         node_data = self._get_data_for_node_transformer(df)
-        nodes_features = transformer.fit_transform(node_data)
-        nodes_features = torch.from_numpy(nodes_features.todense())
+        nodes_features = transformer.fit_transform(node_data).todense()
+        if self.add_additional_node_features:
+            nodes_features = self._add_additional_node_features(df, nodes_features)
+        nodes_features = torch.from_numpy(nodes_features)
+        return nodes_features
+
+    def _add_additional_node_features(self, df, nodes_features):
+        additional_features = df.drop(["revenue", "keywords", "overview", "title", "cast", "crew", "id"], axis=1).values
+        additional_features = StandardScaler().fit_transform(additional_features)
+        nodes_features = np.hstack([additional_features, nodes_features])
         return nodes_features
 
     def _get_node_transformer(self):
