@@ -79,3 +79,41 @@ class SAGE(torch.nn.Module):
             x
         x = self.fc(x)
         return x
+
+
+class HeteroGNN(torch.nn.Module):
+    def __init__(self, hidden_channels, out_channels, num_layers, dropout=0.3):
+        super().__init__()
+        self.dropout = dropout
+        self.convs = torch.nn.ModuleList()
+        for _ in range(num_layers):
+            conv = torch_geometric.nn.HeteroConv(
+                {
+                    ("crew", "in", "movies"): torch_geometric.nn.SAGEConv(
+                        (-1, -1), hidden_channels, add_self_loops=False
+                    ),
+                    ("cast", "in", "movies"): torch_geometric.nn.SAGEConv(
+                        (-1, -1), hidden_channels, add_self_loops=False
+                    ),
+                    ("movies", "rev_in", "crew"): torch_geometric.nn.SAGEConv(
+                        (-1, -1), hidden_channels, add_self_loops=False
+                    ),
+                    ("movies", "rev_in", "cast"): torch_geometric.nn.SAGEConv(
+                        (-1, -1), hidden_channels, add_self_loops=False
+                    ),
+                },
+                aggr="mean",
+            )
+            self.convs.append(conv)
+
+        self.lin = torch_geometric.nn.Linear(hidden_channels, out_channels)
+
+    def forward(self, x_dict, edge_index_dict):
+        for conv in self.convs:
+            x_dict = {
+                key: torch.nn.functional.dropout(x.to(torch.float64), p=self.dropout, training=self.training)
+                for key, x in x_dict.items()
+            }
+            x_dict = conv(x_dict, edge_index_dict)
+            x_dict = {key: x.relu() for key, x in x_dict.items()}
+        return self.lin(x_dict["movies"].double()).double()
