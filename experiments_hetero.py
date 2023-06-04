@@ -17,8 +17,8 @@ lrs = [0.1, 0.03, 0.01]
 graph_features = ["overview", "keywords"]
 
 
-def main(task_id):
-    # global task_id
+def main():
+    global task_id
     global hidden_sizes
     global dropouts
     global lrs
@@ -98,4 +98,4 @@ def train_model(hidden_size, dropout, lr, graph_features):
 
 
 if __name__ == "__main__":
-    main(1)
+    main()
