@@ -91,11 +91,11 @@ class TMDBDataset(torch_geometric.data.InMemoryDataset):
             data = self._load_and_preprocess_heterogeneous()
             data_graph = torch_geometric.data.HeteroData()
 
-            data_graph["movies"].x = data["nodes"]["movies"]["x"]
-            data_graph["crew"].x = data["nodes"]["crew"]["x"]
-            data_graph["cast"].x = data["nodes"]["cast"]["x"]
+            data_graph["movies"].x = data["nodes"]["movies"]["x"].double()
+            data_graph["crew"].x = data["nodes"]["crew"]["x"].double()
+            data_graph["cast"].x = data["nodes"]["cast"]["x"].double()
 
-            data_graph["movies"].y = data["nodes"]["movies"]["y"]
+            data_graph["movies"].y = data["nodes"]["movies"]["y"].double()
 
             data_graph["crew", "in", "movies"].edge_index = data["edges"]["movie_crew"][torch.tensor([1, 0]), :]
             data_graph["cast", "in", "movies"].edge_index = data["edges"]["movie_cast"][torch.tensor([1, 0]), :]
