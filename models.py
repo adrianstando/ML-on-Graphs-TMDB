@@ -2,9 +2,11 @@ import torch_geometric
 import torch
 import numpy as np
 
+from dataset import TMDBDataset
+
 
 class GCN(torch.nn.Module):
-    def __init__(self, hidden_size=(16,), dropout=0.3, df=None):
+    def __init__(self, hidden_size: tuple = (16,), dropout: float = 0.3, df: TMDBDataset = None):
         super().__init__()
         self.dropout = dropout
         self.conv_layers = []
@@ -28,7 +30,7 @@ class GCN(torch.nn.Module):
 
 
 class GAT(torch.nn.Module):
-    def __init__(self, hidden_size=(16,), heads=(3,), dropout=0.3, df=None):
+    def __init__(self, hidden_size: tuple = (16,), heads: tuple = (3,), dropout: float = 0.3, df: TMDBDataset = None):
         super().__init__()
         self.conv_layers = []
         n = len(hidden_size)
@@ -58,7 +60,7 @@ class GAT(torch.nn.Module):
 
 
 class SAGE(torch.nn.Module):
-    def __init__(self, hidden_size=(16,), dropout=0.3, df=None):
+    def __init__(self, hidden_size: tuple = (16,), dropout: float = 0.3, df: TMDBDataset = None):
         super().__init__()
         self.dropout = dropout
         self.conv_layers = []
@@ -82,7 +84,9 @@ class SAGE(torch.nn.Module):
 
 
 class HeteroGNN(torch.nn.Module):
-    def __init__(self, hidden_channels, out_channels, num_layers, dropout=0.3):
+    def __init__(
+        self, hidden_channels: int = None, out_channels: int = None, num_layers: int = None, dropout: float = 0.3
+    ):
         super().__init__()
         self.dropout = dropout
         self.convs = torch.nn.ModuleList()
