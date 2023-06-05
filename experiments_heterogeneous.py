@@ -8,7 +8,7 @@ from models import HeteroGNN
 from dataset import TMDBDataset
 
 
-task_id = os.getenv("SLURM_ARRAY_TASK_ID")
+task_id = os.getenv("TASK_ID")
 
 hidden_sizes = [8, 16, 24]
 dropouts = [0.0, 0.3, 0.5]
@@ -25,7 +25,6 @@ def main():
     global graph_features
 
     task_id = int(task_id)
-    task_id = task_id - 1
     print(f"Task id: {task_id}")
 
     hidden_sizes_idx = task_id // (len(dropouts) * len(lrs) * len(graph_features))
