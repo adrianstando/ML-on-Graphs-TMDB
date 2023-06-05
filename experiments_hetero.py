@@ -10,7 +10,7 @@ from dataset import TMDBDataset
 
 task_id = os.getenv("SLURM_ARRAY_TASK_ID")
 
-hidden_sizes = [8, 16, 32]
+hidden_sizes = [8, 16, 24]
 dropouts = [0.0, 0.3, 0.5]
 lrs = [0.1, 0.03, 0.01]
 
@@ -54,6 +54,7 @@ def train_model(hidden_size, dropout, lr, graph_features):
         graph_type="heterogeneous",
     )
 
+    print(f"Training with hidden size {hidden_size}, dropout {dropout}, lr {lr}")
     graph = df[0]
     graph["movies"].y = np.log(graph["movies"].y)
 
@@ -79,7 +80,7 @@ def train_model(hidden_size, dropout, lr, graph_features):
         train_mse.append(loss.item())
 
         test_mask = graph["movies"].test_mask
-        test_mse_val = loss_fn(out[test_mask].ravel(), graph["movies"].y[test_mask])
+        test_mse_val = loss_fn(out[test_mask].ravel(), graph["movies"].y[test_mask]).item()
         test_mse.append(test_mse_val)
 
     pd.DataFrame(
